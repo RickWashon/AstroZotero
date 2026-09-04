@@ -20,7 +20,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat .payload/part00 .payload/part01 .payload/part02 .payload/part03 | base64 -d > /tmp/astrozotero-v0.3.tar.gz
+          cat .payload/part00 .payload/part01 .payload/part02 .payload/part03 | tr -d '[:space:]' | base64 -d > /tmp/astrozotero-v0.3.tar.gz
           rm -rf content defaults locale chrome.manifest install.rdf
           tar -xzf /tmp/astrozotero-v0.3.tar.gz -C .
           rm -rf .payload
