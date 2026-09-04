@@ -1,15 +1,15 @@
 name: Publish AstroZotero v0.3
 
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
 
 permissions:
   contents: write
 
 jobs:
   publish:
-    if: github.event.head_commit.message == 'Add release bootstrap for AstroZotero v0.3'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,6 +24,9 @@ jobs:
           rm -rf content defaults locale chrome.manifest install.rdf
           tar -xzf /tmp/astrozotero-v0.3.tar.gz -C .
           rm -rf .payload
+          rm -f .github/workflows/release-v0.3.yml
+          rmdir .github/workflows 2>/dev/null || true
+          rmdir .github 2>/dev/null || true
           python - <<'PY'
           import json
           with open('manifest.json', encoding='utf-8') as f:
