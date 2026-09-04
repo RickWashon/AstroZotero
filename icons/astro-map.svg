@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <style>
+    :root{color-scheme:light dark;--c:#424952}
+    @media(prefers-color-scheme:dark){:root{--c:#f1f1f1}}
+  </style>
+  <g fill="none" stroke="var(--c)" stroke-width="4.5" stroke-linecap="round" opacity=".86">
+    <path d="M14 20L31 13L49 24L44 47L22 50L14 20M31 13L22 50M14 20L44 47M49 24L22 50"/>
+  </g>
+  <g fill="var(--c)">
+    <circle cx="14" cy="20" r="6"/><circle cx="31" cy="13" r="6"/>
+    <circle cx="49" cy="24" r="6"/><circle cx="44" cy="47" r="6"/>
+    <circle cx="22" cy="50" r="6"/>
+  </g>
+</svg>

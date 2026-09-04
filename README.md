@@ -1,16 +1,85 @@
-# Zotero NASA ADS Metadata Updater
+# AstroZotero
 
-This Zotero plugin allows one to update the Zotero metadata and/or download a publisher PDF for a given paper based on a query to the [SAO/NASA Astrophysics Data System](https://ui.adsabs.harvard.edu/) database. This is particularly useful to update papers that were first added to Zotero from the arXiv with their published versions.
+Astronomy-focused Zotero plugin powered primarily by the NASA Astrophysics Data System (ADS).
 
-## Usage
-- First, obtain a NASA ADS API Key by going to [this page](https://ui.adsabs.harvard.edu/help/api/) and logging in.
-- Enter the API Key, either by going to Tools > Enter NASA ADS API Key or in the popup on first run.
-- Right click an item and select "Update Metadata from NASA ADS" to query the NASA ADS database using either the DOI (preferred) or arXiv number. The plugin retrieves all the necessary information from the server, including the [NASA ADS Bibcodes](https://ui.adsabs.harvard.edu/help/actions/bibcode) and ADS URLs, which are stored in the "extra" field and can be accessed by Better BibTeX.
-- Selecting "Download Publisher PDF from NASA ADS" uses the ADS API to redirect to the publisher PDF. This will fail if you do not have access to the PDF (e.g., through a VPN or on-campus access for non-Open Access articles).
+AstroZotero extends the original `zot-nasa-ads` idea into an astronomy literature workflow for Zotero 7-9, with ADS metadata enrichment, PDF retrieval, and an embedded literature map.
 
-## Caveats
-- PDF download may fail due to hitting a Captcha. 
+## Version 0.3
+
+### NASA ADS metadata
+
+- Store and update ADS Bibcode / ADS URL and astronomy identifiers.
+- Match Zotero items through DOI, arXiv identifiers, and ADS metadata.
+- Optional safe metadata enrichment without aggressively overwriting core Zotero metadata.
+
+### PDF retrieval
+
+- `Download Best PDF` with ADS publisher / arXiv / author / ADS fallbacks.
+- `Download Latest Published PDF` for the publisher version only.
+- Optional preference for open-access sources.
+- Skip existing PDFs when desired.
+- Single-paper imports can automatically download the Best PDF.
+- Batch imports can sequentially download Best PDFs with retry and real success/failure accounting.
+
+### Astro Map
+
+The Astro Map is embedded directly below the Zotero item tree and is opened from the Zotero toolbar or Tools menu.
+
+Available relations:
+
+- Cited by
+- References
+- Similar
+- Reviews
+- Useful
+- Trending
+
+The default view is **Cited by + References** to reduce expensive ADS discovery queries.
+
+Visual semantics:
+
+- Node color = relationship type.
+- Filled node = paper already exists in Zotero.
+- Hollow node = external paper.
+- Multi-relation papers can show secondary relation markers.
+
+Interaction:
+
+- Zoom around the mouse pointer and pan the map.
+- Use the currently selected Zotero item as the map seed.
+- Open ADS / DOI records.
+- Show local papers in Zotero, including papers outside the current collection.
+- Add external papers to Zotero.
+- Batch-select and batch-import external papers into the collection captured when the map seed is selected.
+
+### Fallback data source
+
+NASA ADS is the primary source. OpenAlex can be used as a fallback for:
+
+- Cited by
+- References
+- Similar
+
+ADS-specific `reviews()`, `useful()`, and `trending()` are not replaced with semantically different OpenAlex queries.
+
+## Compatibility
+
+- Zotero 7
+- Zotero 8
+- Zotero 9.0.x (primary tested target: Zotero 9.0.6)
+
+## Setup
+
+1. Install the `.xpi` from the GitHub Releases page.
+2. Restart Zotero if requested.
+3. Open Zotero Settings -> NASA ADS.
+4. Paste a NASA ADS API token and test it.
+5. Optional: configure OpenAlex fallback and PDF preferences.
+
+## Credits
+
+AstroZotero is based on the original [`samuelyeewl/zot-nasa-ads`](https://github.com/samuelyeewl/zot-nasa-ads) project by Samuel Yee and remains licensed under the GNU Affero General Public License v3.0.
 
 ## License
 
-Distributed under version 3 of the GNU Affero General Public License (AGPL).
+GNU Affero General Public License v3.0. See `COPYING`.

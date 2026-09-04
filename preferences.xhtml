@@ -1,0 +1,77 @@
+<vbox xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+      xmlns:html="http://www.w3.org/1999/xhtml"
+      data-search-strings-raw="AstroZotero NASA ADS OpenAlex API token PDF astronomy arXiv metadata citations references literature discovery similar useful reviews trending fallback">
+  <groupbox>
+    <label><html:h2>NASA ADS API</html:h2></label>
+    <description>Set or replace the API token used for NASA ADS searches, citation/reference data, discovery, and PDF resolver requests.</description>
+    <html:label for="zot-nasa-ads-token"><html:b>API token</html:b></html:label>
+    <html:input id="zot-nasa-ads-token"
+                type="password"
+                preference="extensions.zotnasaads.apikey"
+                style="width: 100%; max-width: 720px;"/>
+    <hbox align="center" style="margin-top: 8px;">
+      <button label="Test token" oncommand="ZotNasaAdsPreferences.testToken();"/>
+      <button label="Open ADS token page" oncommand="ZotNasaAdsPreferences.openTokenPage();"/>
+      <description id="zot-nasa-ads-token-status" style="margin-left: 10px;"/>
+    </hbox>
+  </groupbox>
+
+  <groupbox>
+    <label><html:h2>Astro Map</html:h2></label>
+    <description>
+      Astro Map is embedded below the Zotero item list. Colours encode relationship type; filled nodes are already in Zotero and hollow nodes are external papers.
+      Ctrl/Cmd-click external nodes to build a batch selection, or use “Select all new” and “Add selected”.
+    </description>
+  </groupbox>
+
+  <groupbox>
+    <label><html:h2>Fallback data source</html:h2></label>
+    <checkbox label="Use OpenAlex when NASA ADS times out or is temporarily unavailable"
+              preference="extensions.zotnasaads.openAlexFallback"/>
+    <description>
+      OpenAlex can fall back for Cited by, References, and Similar. ADS-only discovery semantics (Reviews, Useful, Trending) are not silently replaced with different algorithms.
+      arXiv remains the fallback for preprint metadata/PDF retrieval rather than citation-network discovery.
+    </description>
+    <html:label for="astrozotero-openalex-key"><html:b>OpenAlex API key (optional)</html:b></html:label>
+    <html:input id="astrozotero-openalex-key"
+                type="password"
+                preference="extensions.zotnasaads.openAlexApiKey"
+                style="width: 100%; max-width: 720px;"/>
+    <description>
+      Keyless OpenAlex queries are supported for casual use. A free OpenAlex API key is recommended for heavier map exploration and batch workflows.
+    </description>
+  </groupbox>
+
+  <groupbox>
+    <label><html:h2>PDF download</html:h2></label>
+    <checkbox label="Skip items that already have a PDF"
+              preference="extensions.zotnasaads.skipExistingPDF"/>
+    <checkbox label="Prefer open-access sources for speed (arXiv/ADS before publisher PDF)"
+              preference="extensions.zotnasaads.preferOpenAccess"/>
+    <checkbox label="After a single Astro Map ‘Add to Zotero’, automatically download the Best PDF"
+              preference="extensions.zotnasaads.downloadPDFOnSingleAdd"/>
+    <checkbox label="After Astro Map batch import, download Best PDF sequentially for each newly added paper"
+              preference="extensions.zotnasaads.downloadPDFOnBatchAdd"/>
+    <description>
+      Publisher-first remains the default. arXiv EPRINT_PDF links are downloaded directly instead of passing through the ADS web gateway.
+      Single-item Add to Zotero can automatically fetch Best PDF. Batch imports can also fetch Best PDF sequentially (not concurrently) and add every new paper to the currently selected collection when one is selected.
+      “Download Latest Published PDF” is single-item only, ignores the skip-existing-PDF setting, and requests ADS PUB_PDF only.
+    </description>
+  </groupbox>
+
+  <groupbox>
+    <label><html:h2>Metadata</html:h2></label>
+    <checkbox label="Replace title, authors, and abstract with ADS values"
+              preference="extensions.zotnasaads.overwriteCoreMetadata"/>
+    <description>
+      Off by default. In safe mode, ADS enrichment mainly adds ADS Bibcode/arXiv identifiers and fills missing publication fields, so it does not duplicate a general metadata updater as aggressively.
+    </description>
+  </groupbox>
+
+  <groupbox>
+    <label><html:h2>Literature discovery</html:h2></label>
+    <description>
+      Astro Map can combine Cited by, References, Similar, Reviews, Useful, and Trending. Only selected modes are queried.
+    </description>
+  </groupbox>
+</vbox>

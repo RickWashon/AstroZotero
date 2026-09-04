@@ -1,0 +1,17 @@
+.az-pane{font:13px system-ui,sans-serif;color:CanvasText;min-width:0;padding:2px 4px 8px}
+.az-tabs{display:flex;gap:4px;flex-wrap:wrap;margin:2px 0 9px}
+.az-tabs button,.az-btn{font:inherit;border:1px solid color-mix(in srgb,CanvasText 22%,transparent);background:ButtonFace;color:ButtonText;border-radius:6px;padding:5px 8px;cursor:pointer}
+.az-tabs button[aria-selected="true"]{background:AccentColor;color:AccentColorText;border-color:AccentColor}
+.az-toolbar{display:flex;gap:5px;flex-wrap:wrap;margin:8px 0}
+.az-status{font-size:12px;color:GrayText;margin:5px 0;line-height:1.35}
+.az-title{font-weight:650;font-size:14px;line-height:1.3;margin:3px 0}
+.az-meta{color:GrayText;line-height:1.4;margin:2px 0}
+.az-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;margin:8px 0}
+.az-metric{border:1px solid color-mix(in srgb,CanvasText 15%,transparent);border-radius:7px;padding:6px;text-align:center;background:color-mix(in srgb,Canvas 94%,CanvasText 6%)}
+.az-metric b{display:block;font-size:16px}.az-metric span{font-size:11px;color:GrayText}
+.az-pills{display:flex;gap:4px;flex-wrap:wrap;margin:5px 0}.az-pill{font-size:11px;padding:2px 6px;border-radius:999px;background:color-mix(in srgb,AccentColor 16%,Canvas);border:1px solid color-mix(in srgb,AccentColor 30%,transparent)}
+.az-list{display:flex;flex-direction:column;gap:7px}.az-card{border:1px solid color-mix(in srgb,CanvasText 15%,transparent);border-radius:7px;padding:7px;background:Canvas}
+.az-card-title{font-weight:620;line-height:1.3;margin-bottom:3px}.az-card-meta{font-size:12px;color:GrayText;line-height:1.35}.az-card-actions{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
+.az-section-title{font-weight:650;margin:9px 0 5px}.az-checks{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0}.az-checks label{display:flex;align-items:center;gap:3px}
+.az-pdf-row{display:grid;grid-template-columns:auto 1fr;gap:6px;align-items:start;padding:4px 0;border-bottom:1px solid color-mix(in srgb,CanvasText 10%,transparent)}
+.az-error{color:#b42318;white-space:pre-wrap}.az-empty{color:GrayText;padding:8px 2px}.az-small{font-size:11px;color:GrayText}
