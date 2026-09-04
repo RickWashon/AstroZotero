@@ -1,0 +1,68 @@
+name: Publish AstroZotero v0.3
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: github.event.head_commit.message == 'Add release bootstrap for AstroZotero v0.3'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reconstruct tested v0.3 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .payload/part00 .payload/part01 .payload/part02 .payload/part03 | base64 -d > /tmp/astrozotero-v0.3.tar.gz
+          rm -rf content defaults locale chrome.manifest install.rdf
+          tar -xzf /tmp/astrozotero-v0.3.tar.gz -C .
+          rm -rf .payload
+          python - <<'PY'
+          import json
+          with open('manifest.json', encoding='utf-8') as f:
+              m = json.load(f)
+          assert m['version'] == '0.3', m['version']
+          assert m['applications']['zotero']['strict_min_version'] == '7.0.0'
+          print('manifest verified:', m['version'])
+          PY
+
+      - name: Commit v0.3 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Release AstroZotero v0.3'
+          git push origin main
+
+      - name: Build release XPI
+        shell: bash
+        run: |
+          set -euo pipefail
+          zip -qr AstroZotero-0.3.xpi \
+            manifest.json bootstrap.js astro-map.js zot-nasa-ads.js \
+            preferences.js preferences.xhtml prefs.js updates.json zoteroPane.css \
+            icons locale COPYING README.md
+          unzip -t AstroZotero-0.3.xpi
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release delete v0.3 --yes >/dev/null 2>&1 || true
+          git tag -d v0.3 >/dev/null 2>&1 || true
+          git push origin :refs/tags/v0.3 >/dev/null 2>&1 || true
+          gh release create v0.3 AstroZotero-0.3.xpi \
+            --target main \
+            --title 'AstroZotero v0.3' \
+            --notes 'Astronomy-focused Zotero workflow powered by NASA ADS. Includes ADS metadata enrichment, Best/Published PDF retrieval, embedded Astro Map (Cited by, References, Similar, Reviews, Useful, Trending), OpenAlex fallback, local-library matching, and single/batch Zotero import.'
