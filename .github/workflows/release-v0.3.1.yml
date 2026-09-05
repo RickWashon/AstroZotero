@@ -1,0 +1,102 @@
+name: Publish AstroZotero v0.3.1
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reconstruct exact tested v0.3.1 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=(
+            f7f685e12530fb905120553dcc959ab2e7d3f13e
+            3dfc344e0e2d37dc5ef85e94dbe28728d3171159
+            9e359836e065cff78bd160b9f183e236eaccf12a
+            d7d00355b0a79df17658ed1c421b89e15fe90200
+            493792bdfab9e876645e77684fd25e76612049bf
+          )
+          for i in 0 1 2 3 4; do
+            f=$(printf '.payload031/part%02d' "$i")
+            actual=$(git hash-object "$f")
+            test "$actual" = "${expected[$i]}" || { echo "$f SHA mismatch: $actual"; exit 1; }
+          done
+
+          cat .payload031/part00 .payload031/part01 .payload031/part02 .payload031/part03 .payload031/part04 | base64 -d > /tmp/astrozotero-v0.3.1.tar.gz
+          echo 'e486cceb3fb68d9c4625e09b7d50cd61a11952b091ed31ec935ab471d9431c74  /tmp/astrozotero-v0.3.1.tar.gz' | sha256sum -c -
+          tar -tzf /tmp/astrozotero-v0.3.1.tar.gz >/dev/null
+
+          rm -rf icons locale
+          rm -f .gitignore COPYING README.md astro-map.js bootstrap.js manifest.json preferences.js preferences.xhtml prefs.js updates.json zot-nasa-ads.js zoteroPane.css
+          tar -xzf /tmp/astrozotero-v0.3.1.tar.gz -C .
+          rm -rf .payload031
+          rm -f .github/workflows/release-v0.3.1.yml
+          rmdir .github/workflows 2>/dev/null || true
+          rmdir .github 2>/dev/null || true
+
+          python - <<'PY'
+          import json
+          with open('manifest.json', encoding='utf-8') as f:
+              m = json.load(f)
+          assert m['version'] == '0.3.1', m['version']
+          assert m['applications']['zotero']['strict_min_version'] == '7.0.0'
+          assert m['applications']['zotero']['strict_max_version'] == '9.0.*'
+          with open('updates.json', encoding='utf-8') as f:
+              u = json.load(f)
+          update = u['addons']['zot-nasa-ads@zot.nasa.ads']['updates'][0]
+          assert update['version'] == '0.3.1'
+          assert update['update_link'].endswith('/v0.3.1/AstroZotero-0.3.1.xpi')
+          print('manifest and updates.json verified')
+          PY
+
+      - name: Commit clean v0.3.1 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Release AstroZotero v0.3.1'
+          git push origin main
+
+      - name: Build and verify release XPI
+        shell: bash
+        run: |
+          set -euo pipefail
+          zip -qr AstroZotero-0.3.1.xpi \
+            manifest.json bootstrap.js astro-map.js zot-nasa-ads.js \
+            preferences.js preferences.xhtml prefs.js updates.json zoteroPane.css \
+            icons locale COPYING README.md
+          unzip -t AstroZotero-0.3.1.xpi
+          python - <<'PY'
+          import json, zipfile
+          with zipfile.ZipFile('AstroZotero-0.3.1.xpi') as z:
+              m = json.loads(z.read('manifest.json'))
+              assert m['version'] == '0.3.1'
+          print('XPI manifest verified: 0.3.1')
+          PY
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release delete v0.3.1 --yes >/dev/null 2>&1 || true
+          git tag -d v0.3.1 >/dev/null 2>&1 || true
+          git push origin :refs/tags/v0.3.1 >/dev/null 2>&1 || true
+          gh release create v0.3.1 AstroZotero-0.3.1.xpi \
+            --target main \
+            --title 'AstroZotero v0.3.1' \
+            --notes 'Improves Astro Map labeling: author-year labels are now balanced across active relationship types, expand dynamically as you zoom, follow the visible viewport, prioritize seed/local/multi-relation/high-citation papers, and better preserve compound surnames. All v0.3 ADS metadata, PDF retrieval, OpenAlex fallback, literature-map, and Zotero import features remain.'
