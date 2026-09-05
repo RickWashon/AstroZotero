@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "AstroZotero",
-  "version": "0.3",
+  "version": "0.3.1",
   "description": "Astronomy-focused Zotero workflow powered by NASA ADS: literature map, metadata enrichment, and PDF retrieval.",
   "author": "Samuel Yee (original zot-nasa-ads); RickWashon/AstroZotero adaptation",
   "homepage_url": "https://github.com/RickWashon/AstroZotero",

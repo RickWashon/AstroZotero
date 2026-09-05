@@ -3,8 +3,8 @@
     "zot-nasa-ads@zot.nasa.ads": {
       "updates": [
         {
-          "version": "0.3",
-          "update_link": "https://github.com/RickWashon/AstroZotero/releases/download/v0.3/AstroZotero-0.3.xpi",
+          "version": "0.3.1",
+          "update_link": "https://github.com/RickWashon/AstroZotero/releases/download/v0.3.1/AstroZotero-0.3.1.xpi",
           "applications": {
             "zotero": {
               "strict_min_version": "7.0.0",

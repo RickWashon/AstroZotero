@@ -692,9 +692,27 @@ var AstroZoteroMap = {
   },
 
   displayLabel(node) {
-    const first = node.authors?.[0] || "";
-    let surname = first.includes(",") ? first.split(",")[0].trim() : first.trim().split(/\s+/).slice(-1)[0];
+    const first = String(node.authors?.[0] || "").trim().replace(/\s+/g, " ");
+    let surname = "";
+    if (first.includes(",")) {
+      surname = first.split(",")[0].trim();
+    } else if (first) {
+      const words = first.split(" ").filter(Boolean);
+      const collectiveIndex = words.findIndex(word => /^(collaboration|consortium|team|survey|project)$/i.test(word));
+      if (collectiveIndex >= 0) {
+        surname = words.slice(Math.max(0, collectiveIndex - 2), collectiveIndex + 1).join(" ");
+      } else {
+        const particles = new Set([
+          "da", "dal", "de", "del", "della", "den", "der", "di", "dos", "du",
+          "la", "le", "van", "von", "zu", "zum", "zur"
+        ]);
+        let start = Math.max(0, words.length - 1);
+        while (start > 0 && particles.has(words[start - 1].toLocaleLowerCase())) start--;
+        surname = words.slice(start).join(" ");
+      }
+    }
     if (!surname) surname = (node.title || "Paper").split(/\s+/).slice(0, 2).join(" ");
+    if (surname.length > 32) surname = surname.slice(0, 30).trimEnd() + "…";
     return surname + (node.year ? " (" + node.year + ")" : "");
   },
 
@@ -918,6 +936,156 @@ var AstroZoteroMap = {
     }
   },
 
+  labelPriority(node) {
+    if (node.seed) return 1e9;
+    const citations = Math.max(0, Number(node.citationCount || 0));
+    const modeCount = Math.max(1, node.modes?.size || 1);
+    return Math.log10(citations + 1) * 24 + (node.localItemID ? 18 : 0) + Math.max(0, modeCount - 1) * 7;
+  },
+
+  labelBudgetForZoom(zoom, visibleCount, modeCount) {
+    let base;
+    if (zoom < 0.55) base = 10;
+    else if (zoom < 0.8) base = 16;
+    else if (zoom < 1.05) base = 26;
+    else if (zoom < 1.35) base = 36;
+    else if (zoom < 1.7) base = 50;
+    else if (zoom < 2.1) base = 70;
+    else if (zoom < 2.55) base = 100;
+    else base = visibleCount;
+
+    let perMode;
+    if (zoom < 0.65) perMode = 1;
+    else if (zoom < 0.9) perMode = 2;
+    else if (zoom < 1.15) perMode = 4;
+    else if (zoom < 1.45) perMode = 6;
+    else if (zoom < 1.8) perMode = 9;
+    else perMode = 12;
+
+    return {
+      budget: Math.min(visibleCount, Math.max(base, modeCount * perMode)),
+      perMode
+    };
+  },
+
+  nodeScreenPosition(state, node) {
+    return {
+      x: state.panX + node.x * state.zoom,
+      y: state.panY + node.y * state.zoom
+    };
+  },
+
+  labelRect(state, node) {
+    const pos = this.nodeScreenPosition(state, node);
+    const text = this.displayLabel(node);
+    const fontSize = node.seed ? 14 : 11.5;
+    const width = Math.min(250, Math.max(34, text.length * fontSize * 0.56 + 4));
+    const left = pos.x + this.nodeRadius(node) * state.zoom + 5;
+    return {
+      left,
+      right: left + width,
+      top: pos.y - fontSize * 0.78,
+      bottom: pos.y + fontSize * 0.38
+    };
+  },
+
+  labelsOverlap(a, b) {
+    const pad = 2.5;
+    return !(a.right + pad < b.left || b.right + pad < a.left || a.bottom + pad < b.top || b.bottom + pad < a.top);
+  },
+
+  visibleLabelIDs(state) {
+    const graph = state.graphData;
+    if (!graph?.nodes?.length) return new Set();
+    const zoom = Math.max(0.01, Number(state.zoom || 1));
+    const activeModes = ["cited", "references", "similar", "reviews", "useful", "trending"]
+      .filter(mode => state.selectedModes.has(mode));
+
+    const visibleNodes = graph.nodes.filter(node => {
+      if (node.seed) return true;
+      const p = this.nodeScreenPosition(state, node);
+      return p.x > -90 && p.x < 1190 && p.y > -55 && p.y < 595;
+    });
+    if (!visibleNodes.length) return new Set();
+
+    // When deeply zoomed in, show every label in the current viewport.
+    if (zoom >= 2.55) return new Set(visibleNodes.map(node => node.bibcode));
+
+    const { budget, perMode } = this.labelBudgetForZoom(zoom, visibleNodes.length, activeModes.length);
+    const selected = new Set();
+    const rects = [];
+    const sorted = nodes => [...nodes].sort((a, b) => this.labelPriority(b) - this.labelPriority(a));
+
+    const addNode = (node, force = false) => {
+      if (!node || selected.has(node.bibcode) || selected.size >= budget) return false;
+      const rect = this.labelRect(state, node);
+      if (!force && rects.some(existing => this.labelsOverlap(rect, existing))) return false;
+      selected.add(node.bibcode);
+      rects.push(rect);
+      return true;
+    };
+
+    const seed = visibleNodes.find(node => node.seed);
+    if (seed) addNode(seed, true);
+
+    // Give every enabled relation type a fair share before filling by citation
+    // importance. Round-robin prevents References from monopolising labels.
+    const modeCandidates = new Map();
+    const modeIndex = new Map();
+    for (const mode of activeModes) {
+      modeCandidates.set(mode, sorted(visibleNodes.filter(node => !node.seed && node.modes?.has?.(mode))));
+      modeIndex.set(mode, 0);
+    }
+    for (let round = 0; round < perMode && selected.size < budget; round++) {
+      for (const mode of activeModes) {
+        if (selected.size >= budget) break;
+        const candidates = modeCandidates.get(mode) || [];
+        let index = modeIndex.get(mode) || 0;
+        let added = false;
+        while (index < candidates.length) {
+          const candidate = candidates[index++];
+          if (selected.has(candidate.bibcode)) continue;
+          if (addNode(candidate, false)) { added = true; break; }
+        }
+        modeIndex.set(mode, index);
+        // At least one visible label per active category, even in a dense cluster.
+        if (round === 0 && !added && candidates.length) {
+          const fallback = candidates.find(candidate => !selected.has(candidate.bibcode));
+          if (fallback) addNode(fallback, true);
+        }
+      }
+    }
+
+    // Fill remaining room using a global importance score, with Zotero/local
+    // and multi-relation papers receiving a modest priority boost.
+    for (const node of sorted(visibleNodes)) {
+      if (selected.size >= budget) break;
+      addNode(node, false);
+    }
+    return selected;
+  },
+
+  updateLabelVisibility(state) {
+    if (!state.labelElements?.size) return;
+    const zoom = Math.max(0.01, Number(state.zoom || 1));
+    const visibleIDs = this.visibleLabelIDs(state);
+    for (const [bibcode, entry] of state.labelElements) {
+      const { label, node } = entry;
+      const show = visibleIDs.has(bibcode);
+      label.style.display = show ? "" : "none";
+      if (!show) continue;
+
+      // Counter-scale text so labels stay at a readable screen size while node
+      // spacing grows with zoom. This is what makes additional labels useful
+      // instead of simply enlarging the same collisions.
+      const baseFont = node.seed ? 14 : 11.5;
+      label.setAttribute("x", (this.nodeRadius(node) + 5 / zoom).toFixed(2));
+      label.setAttribute("y", (4 / zoom).toFixed(2));
+      label.setAttribute("font-size", (baseFont / zoom).toFixed(2));
+      label.setAttribute("stroke-width", (3 / zoom).toFixed(2));
+    }
+  },
+
   renderGraph(state, graph) {
     this.clearSVG(state);
     this.updateLegend(state);
@@ -951,9 +1119,7 @@ var AstroZoteroMap = {
       edgeLayer.appendChild(line);
     }
 
-    const ranked = [...graph.nodes].sort((a, b) => (b.citationCount || 0) - (a.citationCount || 0));
-    const labelIDs = new Set(ranked.slice(0, Math.min(18, ranked.length)).map(n => n.bibcode));
-    for (const n of graph.nodes) if (n.seed || n.localItemID) labelIDs.add(n.bibcode);
+    state.labelElements = new Map();
 
     for (const node of graph.nodes) {
       const g = this.svgEl(doc, "g", { transform: "translate(" + node.x.toFixed(1) + "," + node.y.toFixed(1) + ")", tabindex: "0" });
@@ -987,20 +1153,21 @@ var AstroZoteroMap = {
       const title = this.svgEl(doc, "title");
       title.textContent = node.title + "\n" + this.displayLabel(node) + " · " + node.citationCount + " citations" + (node.localItemID ? " · In Zotero" : " · Not in Zotero");
       g.appendChild(title);
-      if (labelIDs.has(node.bibcode)) {
-        const label = this.svgEl(doc, "text", {
-          x: (this.nodeRadius(node) + 5).toFixed(1), y: "4",
-          "font-size": node.seed ? "14" : "11.5",
-          "font-family": "system-ui, sans-serif",
-          fill: "CanvasText",
-          "paint-order": "stroke",
-          stroke: "Canvas",
-          "stroke-width": "3",
-          "stroke-linejoin": "round"
-        });
-        label.textContent = this.displayLabel(node);
-        g.appendChild(label);
-      }
+      const label = this.svgEl(doc, "text", {
+        x: (this.nodeRadius(node) + 5).toFixed(1), y: "4",
+        "font-size": node.seed ? "14" : "11.5",
+        "font-family": "system-ui, sans-serif",
+        fill: "CanvasText",
+        "paint-order": "stroke",
+        stroke: "Canvas",
+        "stroke-width": "3",
+        "stroke-linejoin": "round",
+        "pointer-events": "none"
+      });
+      label.textContent = this.displayLabel(node);
+      label.style.display = "none";
+      g.appendChild(label);
+      state.labelElements.set(node.bibcode, { label, node });
       if (state.batchSelection.has(node.bibcode)) {
         g.insertBefore(this.svgEl(doc, "circle", {
           r: (this.nodeRadius(node) + 4.2).toFixed(1), fill: "none",
@@ -1680,6 +1847,7 @@ var AstroZoteroMap = {
     const svg = state.svg;
     while (svg?.firstChild) svg.removeChild(svg.firstChild);
     state.viewport = null;
+    state.labelElements = new Map();
     if (state.details) state.details.style.display = "none";
   },
 
@@ -1728,5 +1896,6 @@ var AstroZoteroMap = {
   applyViewTransform(state) {
     if (!state.viewport) return;
     state.viewport.setAttribute("transform", "translate(" + state.panX.toFixed(1) + " " + state.panY.toFixed(1) + ") scale(" + state.zoom.toFixed(3) + ")");
+    this.updateLabelVisibility(state);
   }
 };

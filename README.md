@@ -4,7 +4,7 @@ Astronomy-focused Zotero plugin powered primarily by the NASA Astrophysics Data 
 
 AstroZotero extends the original `zot-nasa-ads` idea into an astronomy literature workflow for Zotero 7-9, with ADS metadata enrichment, PDF retrieval, and an embedded literature map.
 
-## Version 0.3
+## Version 0.3.1
 
 ### NASA ADS metadata
 
@@ -46,6 +46,7 @@ Visual semantics:
 Interaction:
 
 - Zoom around the mouse pointer and pan the map.
+- Dynamic author-year labels expand with zoom and are balanced across active relation types instead of being limited to a fixed global top-N.
 - Use the currently selected Zotero item as the map seed.
 - Open ADS / DOI records.
 - Show local papers in Zotero, including papers outside the current collection.
