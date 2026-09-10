@@ -364,11 +364,12 @@ var ZotNasaAds = {
     });
   },
 
-  async adsSearchMany(apiKey, query, fields, rows = 20, sort = null) {
+  async adsSearchMany(apiKey, query, fields, rows = 20, sort = null, start = 0) {
     let url = "https://api.adsabs.harvard.edu/v1/search/query?q=" +
       encodeURIComponent(query) +
       "&fl=" + encodeURIComponent(fields.join(",")) +
-      "&rows=" + Math.max(1, Math.min(200, Number(rows) || 20));
+      "&rows=" + Math.max(1, Math.min(500, Number(rows) || 20)) +
+      "&start=" + Math.max(0, Number(start) || 0);
     if (sort) url += "&sort=" + encodeURIComponent(sort);
     const response = await this.adsRequest("GET", url, apiKey);
     if (response.status !== 200) {

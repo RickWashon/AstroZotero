@@ -100,6 +100,10 @@ var AstroZoteroMap = {
       batchSelection: new Set(),
       batchAddButton: null,
       batchSelectButton: null,
+      loadMoreButton: null,
+      seedProgress: new Map(),
+      expansionProgress: new Map(),
+      currentCacheKey: null,
       targetContext: null
     };
     this.states.set(win, state);
@@ -239,6 +243,9 @@ var AstroZoteroMap = {
     }
 
     const reload = this.makeButton(doc, "Load", async () => this.loadMap(state, true));
+    const loadMore = this.makeButton(doc, "Load more", async () => this.loadMore(state));
+    loadMore.disabled = true;
+    state.loadMoreButton = loadMore;
     const useSelection = this.makeButton(doc, "Use selected item", async () => this.loadFromCurrentSelection(state, true));
     const resetView = this.makeButton(doc, "Reset view", () => {
       state.zoom = 1; state.panX = 0; state.panY = 0; this.applyViewTransform(state);
@@ -248,7 +255,7 @@ var AstroZoteroMap = {
     addSelected.disabled = true;
     state.batchSelectButton = selectNew;
     state.batchAddButton = addSelected;
-    header.append(reload, useSelection, resetView, selectNew, addSelected);
+    header.append(reload, loadMore, useSelection, resetView, selectNew, addSelected);
 
     const seedLine = this.el(doc, "span", { style: "margin-left:auto;color:GrayText;max-width:34%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" }, "Select one paper, then click Load");
     header.appendChild(seedLine);
@@ -397,22 +404,31 @@ var AstroZoteroMap = {
       state.seedLine.textContent = "Seed: " + this.displayLabel(seed);
 
       const cacheKey = this.recordIdentityKey(seed) + "|" + [...state.selectedModes].sort().join(",");
+      state.currentCacheKey = cacheKey;
       if (!force && state.cache.has(cacheKey)) {
         const cached = state.cache.get(cacheKey);
         state.graphData = cached;
+        state.seedProgress = new Map(Object.entries(cached.seedProgress || {}));
+        state.expansionProgress = new Map(Object.entries(cached.expansionProgress || {}));
         state.batchSelection.clear();
         if (state.batchSelectButton) state.batchSelectButton.textContent = "Select all new";
         this.updateBatchControls(state);
+        this.updateLoadMoreControl(state);
         this.renderGraph(state, cached);
         this.setStatus(state, cached.nodes.length + " papers · cached", false);
         return;
       }
 
+      state.seedProgress = new Map();
+      state.expansionProgress = new Map();
       const merged = new Map();
       const seedNode = this.nodeFromRecord(seed, true);
       merged.set(this.recordIdentityKey(seed), seedNode);
       const modeList = [...state.selectedModes];
-      const perMode = modeList.length >= 5 ? 12 : 18;
+      // Initial discovery is deliberately broad enough to make the map useful
+      // while still keeping the first render responsive. Further pages can be
+      // loaded cumulatively with the Load more control.
+      const perMode = 50;
       const fallbackNotes = [];
 
       for (let i = 0; i < modeList.length; i++) {
@@ -425,8 +441,15 @@ var AstroZoteroMap = {
           try {
             const query = this.operator(mode) + '(bibcode:"' + this.plugin.escapeQueryValue(seed.bibcode) + '")';
             const sort = mode === "cited" ? "date desc" : (mode === "references" ? "citation_count desc" : null);
-            const result = await this.plugin.adsSearchMany(apiKey, query, this.adsFields(), perMode, sort);
+            const result = await this.plugin.adsSearchMany(apiKey, query, this.adsFields(), perMode, sort, 0);
             papers = result.docs.map(raw => this.normalizeRecord(raw));
+            state.seedProgress.set(mode, {
+              nextStart: result.docs.length,
+              requestedRows: perMode,
+              lastCount: result.docs.length,
+              total: result.numFound,
+              source: "ads"
+            });
           } catch (error) {
             if (!this.pref("openAlexFallback", true) || !this.shouldFallbackFromADS(error)) throw error;
             this.log("ADS " + mode + " failed, trying OpenAlex: " + (error?.message || error));
@@ -437,6 +460,7 @@ var AstroZoteroMap = {
             if (openAlexSeed && this.openAlexSupportsMode(mode)) {
               this.setStatus(state, "OpenAlex fallback: " + this.modeLabel(mode) + "…", false);
               papers = await this.openAlexModeResults(openAlexSeed, mode, perMode);
+              state.seedProgress.set(mode, { nextStart: papers.length, requestedRows: papers.length, lastCount: papers.length, total: papers.length, source: "openalex" });
               usedOpenAlex = true;
             } else {
               fallbackNotes.push(this.modeLabel(mode) + " unavailable without ADS");
@@ -447,6 +471,7 @@ var AstroZoteroMap = {
           openAlexSeed = seed;
           if (this.openAlexSupportsMode(mode)) {
             papers = await this.openAlexModeResults(openAlexSeed, mode, perMode);
+            state.seedProgress.set(mode, { nextStart: papers.length, requestedRows: papers.length, lastCount: papers.length, total: papers.length, source: "openalex" });
             usedOpenAlex = true;
           } else {
             fallbackNotes.push(this.modeLabel(mode) + " unavailable without ADS");
@@ -457,7 +482,7 @@ var AstroZoteroMap = {
         for (const paper of papers) {
           if (!paper?.bibcode) continue;
           if (this.recordIdentityKey(paper) === this.recordIdentityKey(seed)) continue;
-          this.mergePaper(merged, paper, mode);
+          this.mergePaper(merged, paper, mode, seed.bibcode);
         }
         if (usedOpenAlex) fallbackNotes.push(this.modeLabel(mode) + " via OpenAlex");
       }
@@ -465,12 +490,19 @@ var AstroZoteroMap = {
       if (generation !== state.loadGeneration) return;
       const nodes = [...merged.values()];
       await this.attachLocalItems(state, nodes);
-      const graph = { seedBibcode: seed.bibcode, nodes, edges: this.buildEdges(nodes, seed.bibcode) };
+      const graph = {
+        seedBibcode: seed.bibcode,
+        nodes,
+        edges: this.buildEdges(nodes, seed.bibcode),
+        seedProgress: Object.fromEntries(state.seedProgress),
+        expansionProgress: Object.fromEntries(state.expansionProgress)
+      };
       state.cache.set(cacheKey, graph);
       state.graphData = graph;
       state.batchSelection.clear();
       if (state.batchSelectButton) state.batchSelectButton.textContent = "Select all new";
       this.updateBatchControls(state);
+      this.updateLoadMoreControl(state);
       this.renderGraph(state, graph);
       const suffix = fallbackNotes.length ? " · " + [...new Set(fallbackNotes)].join("; ") : "";
       this.setStatus(state, nodes.length + " papers · " + graph.edges.length + " links" + suffix, false);
@@ -478,6 +510,218 @@ var AstroZoteroMap = {
       this.log(error?.stack || String(error));
       this.setStatus(state, error?.message || String(error), true);
       this.clearSVG(state);
+    }
+  },
+
+  graphLimit() {
+    return 500;
+  },
+
+  updateLoadMoreControl(state) {
+    const button = state.loadMoreButton;
+    if (!button) return;
+    const graph = state.graphData;
+    if (!graph?.nodes?.length) {
+      button.disabled = true;
+      button.textContent = "Load more";
+      return;
+    }
+    if (graph.nodes.length >= this.graphLimit()) {
+      button.disabled = true;
+      button.textContent = "Limit 500";
+      return;
+    }
+    let hasMore = false;
+    for (const mode of state.selectedModes || []) {
+      const p = state.seedProgress?.get?.(mode);
+      // Do not trust numFound alone for ADS function queries. Some second-order
+      // operators can report a result window that is the same size as rows.
+      // If the last request filled its requested window, probe a wider prefix.
+      if (!p) { hasMore = true; break; }
+      if (p.source !== "ads") continue;
+      const requested = Number(p.requestedRows || p.nextStart || 0);
+      const lastCount = Number(p.lastCount || 0);
+      const total = Number(p.total || 0);
+      if (requested < this.graphLimit() && (lastCount >= requested || Number(p.nextStart || 0) < total)) {
+        hasMore = true;
+        break;
+      }
+    }
+    button.disabled = !hasMore;
+    button.textContent = hasMore ? "Load more (+50/mode)" : "No more seed results";
+  },
+
+  async loadMore(state) {
+    if (!state.graphData?.nodes?.length || !state.seedRecord?.bibcode) {
+      this.setStatus(state, "Load a map first.", true);
+      return;
+    }
+    if (state.graphData.nodes.length >= this.graphLimit()) {
+      this.setStatus(state, "Graph limit reached (500 papers).", false);
+      this.updateLoadMoreControl(state);
+      return;
+    }
+    if (String(state.seedRecord.bibcode).startsWith("OA:")) {
+      this.setStatus(state, "Load more currently uses NASA ADS for the seed; expand a node for OpenAlex-backed graphs.", false);
+      return;
+    }
+
+    const apiKey = this.plugin.ensureApiKey(state.win);
+    if (!apiKey) return;
+    const generation = ++state.loadGeneration;
+    const merged = new Map(state.graphData.nodes.map(node => [this.recordIdentityKey(node), node]));
+    const beforeKeys = new Set(merged.keys());
+    const modeList = [...state.selectedModes];
+    let fetched = 0;
+    let attempted = 0;
+
+    try {
+      for (let i = 0; i < modeList.length; i++) {
+        if (generation !== state.loadGeneration) return;
+        if (merged.size >= this.graphLimit()) break;
+        const mode = modeList[i];
+        const old = state.seedProgress.get(mode);
+        if (old?.source === "openalex") continue;
+
+        // ADS second-order operators are ranking functions. start-based paging
+        // can be unhelpful when the function itself materializes only the
+        // requested window. Ask for a wider prefix (50 -> 100 -> 150 ...),
+        // then merge only records that are new to the current graph.
+        const previousRequested = Number(old?.requestedRows || old?.nextStart || 0);
+        const targetRows = Math.min(this.graphLimit(), Math.max(50, previousRequested + 50));
+        if (old && Number(old.lastCount || 0) < previousRequested && Number(old.nextStart || 0) >= Number(old.total || 0)) continue;
+        if (targetRows <= previousRequested) continue;
+
+        attempted++;
+        this.setStatus(state, "NASA ADS: widening " + this.modeLabel(mode) + " to top " + targetRows + "…", false);
+        const query = this.operator(mode) + '(bibcode:"' + this.plugin.escapeQueryValue(state.seedRecord.bibcode) + '")';
+        const sort = mode === "cited" ? "date desc" : (mode === "references" ? "citation_count desc" : null);
+        const result = await this.plugin.adsSearchMany(apiKey, query, this.adsFields(), targetRows, sort, 0);
+        const papers = result.docs.map(raw => this.normalizeRecord(raw));
+        state.seedProgress.set(mode, {
+          nextStart: result.docs.length,
+          requestedRows: targetRows,
+          lastCount: result.docs.length,
+          total: Math.max(Number(old?.total || 0), Number(result.numFound || 0)),
+          source: "ads"
+        });
+        fetched += result.docs.length;
+        for (const paper of papers) {
+          if (!paper?.bibcode) continue;
+          const key = this.recordIdentityKey(paper);
+          if (merged.size >= this.graphLimit() && !merged.has(key)) continue;
+          if (key === this.recordIdentityKey(state.seedRecord)) continue;
+          this.mergePaper(merged, paper, mode, state.seedRecord.bibcode);
+        }
+      }
+
+      if (generation !== state.loadGeneration) return;
+      const nodes = [...merged.values()];
+      const newNodes = nodes.filter(node => !beforeKeys.has(this.recordIdentityKey(node)));
+      if (newNodes.length) await this.attachLocalItems(state, newNodes);
+      const graph = {
+        seedBibcode: state.graphData.seedBibcode,
+        nodes,
+        edges: this.buildEdges(nodes, state.graphData.seedBibcode),
+        seedProgress: Object.fromEntries(state.seedProgress),
+        expansionProgress: Object.fromEntries(state.expansionProgress)
+      };
+      state.graphData = graph;
+      if (state.currentCacheKey) state.cache.set(state.currentCacheKey, graph);
+      this.updateBatchControls(state);
+      this.updateLoadMoreControl(state);
+      this.renderGraph(state, graph);
+      const added = newNodes.length;
+      if (!attempted) {
+        this.setStatus(state, "No seed relation has another ADS window to probe. Expand a node to continue the graph.", false);
+      } else if (!added) {
+        this.setStatus(state, nodes.length + " papers · no additional unique seed papers returned; expand a node to continue.", false);
+      } else {
+        this.setStatus(state, nodes.length + " papers · " + graph.edges.length + " links · +" + added + " new (" + fetched + " records examined)", false);
+      }
+    } catch (error) {
+      this.log(error?.stack || String(error));
+      this.setStatus(state, error?.message || String(error), true);
+    }
+  },
+
+  async expandNode(state, node) {
+    if (!state.graphData?.nodes?.length || !node?.bibcode || node.seed) return;
+    const apiKey = this.plugin.ensureApiKey(state.win);
+    if (!apiKey) return;
+    if (state.graphData.nodes.length >= this.graphLimit()) {
+      this.setStatus(state, "Graph limit reached (500 papers).", false);
+      return;
+    }
+
+    const generation = ++state.loadGeneration;
+    const merged = new Map(state.graphData.nodes.map(n => [this.recordIdentityKey(n), n]));
+    const beforeKeys = new Set(merged.keys());
+    const modeList = [...state.selectedModes];
+    let fetched = 0;
+
+    try {
+      for (let i = 0; i < modeList.length; i++) {
+        if (generation !== state.loadGeneration) return;
+        if (merged.size >= this.graphLimit()) break;
+        const mode = modeList[i];
+        const progressKey = node.bibcode + "|" + mode;
+        const old = state.expansionProgress.get(progressKey);
+        const start = Number(old?.nextStart || 0);
+        const knownTotal = Number(old?.total || 0);
+        if (old && start >= knownTotal) continue;
+        const rows = Math.min(25, this.graphLimit() - merged.size);
+        if (rows <= 0) break;
+        let papers = [];
+
+        this.setStatus(state, "Expanding " + this.displayLabel(node) + ": " + this.modeLabel(mode) + "…", false);
+        if (node.source === "openalex" || String(node.bibcode).startsWith("OA:")) {
+          // OpenAlex expansion is intentionally one page per relation here;
+          // ADS-backed nodes support true repeated pagination below.
+          if (old) continue;
+          papers = await this.openAlexModeResults(node, mode, rows);
+          state.expansionProgress.set(progressKey, { nextStart: papers.length, total: papers.length, source: "openalex" });
+        } else {
+          const query = this.operator(mode) + '(bibcode:"' + this.plugin.escapeQueryValue(node.bibcode) + '")';
+          const sort = mode === "cited" ? "date desc" : (mode === "references" ? "citation_count desc" : null);
+          const result = await this.plugin.adsSearchMany(apiKey, query, this.adsFields(), rows, sort, start);
+          papers = result.docs.map(raw => this.normalizeRecord(raw));
+          state.expansionProgress.set(progressKey, {
+            nextStart: start + result.docs.length,
+            total: result.numFound,
+            source: "ads"
+          });
+          fetched += result.docs.length;
+        }
+
+        for (const paper of papers) {
+          if (!paper?.bibcode) continue;
+          const key = this.recordIdentityKey(paper);
+          if (merged.size >= this.graphLimit() && !merged.has(key)) continue;
+          this.mergePaper(merged, paper, mode, node.bibcode);
+        }
+      }
+
+      if (generation !== state.loadGeneration) return;
+      const nodes = [...merged.values()];
+      const newNodes = nodes.filter(n => !beforeKeys.has(this.recordIdentityKey(n)));
+      if (newNodes.length) await this.attachLocalItems(state, newNodes);
+      const graph = {
+        seedBibcode: state.graphData.seedBibcode,
+        nodes,
+        edges: this.buildEdges(nodes, state.graphData.seedBibcode),
+        seedProgress: Object.fromEntries(state.seedProgress),
+        expansionProgress: Object.fromEntries(state.expansionProgress)
+      };
+      state.graphData = graph;
+      if (state.currentCacheKey) state.cache.set(state.currentCacheKey, graph);
+      this.updateBatchControls(state);
+      this.updateLoadMoreControl(state);
+      this.renderGraph(state, graph);
+      this.setStatus(state, nodes.length + " papers · " + graph.edges.length + " links · expanded " + this.displayLabel(node) + " (" + newNodes.length + " new)", false);
+    } catch (error) {
+      this.log(error?.stack || String(error));
+      this.setStatus(state, error?.message || String(error), true);
     }
   },
 
@@ -613,7 +857,7 @@ var AstroZoteroMap = {
     return "title:" + this.normalizeTitle(record?.title) + "|" + String(record?.year || "");
   },
 
-  mergePaper(merged, paper, mode) {
+  mergePaper(merged, paper, mode, parentBibcode = null) {
     const key = this.recordIdentityKey(paper);
     let node = merged.get(key);
     if (!node) {
@@ -627,6 +871,8 @@ var AstroZoteroMap = {
       if (!node.openAlexID && paper.openAlexID) node.openAlexID = paper.openAlexID;
     }
     node.modes.add(mode);
+    if (!(node.discoveredFrom instanceof Set)) node.discoveredFrom = new Set(node.discoveredFrom || []);
+    if (parentBibcode && parentBibcode !== node.bibcode) node.discoveredFrom.add(parentBibcode);
     return node;
   },
 
@@ -682,6 +928,7 @@ var AstroZoteroMap = {
       openAlexID: record.openAlexID || null,
       relatedOpenAlex: record.relatedOpenAlex || [],
       modes: new Set(seed ? ["seed"] : []),
+      discoveredFrom: new Set(),
       seed: Boolean(seed),
       localItemID: null,
       x: 550,
@@ -810,7 +1057,15 @@ var AstroZoteroMap = {
     };
     for (const node of nodes) {
       if (node.bibcode !== seedBibcode) {
-        for (const mode of node.modes) if (mode !== "seed") add(seedBibcode, node.bibcode, "discovery", mode);
+        const parents = node.discoveredFrom instanceof Set ? [...node.discoveredFrom] : (node.discoveredFrom || []);
+        const mode = [...(node.modes || [])].find(value => value !== "seed") || null;
+        if (parents.length) {
+          for (const parent of parents) if (ids.has(parent)) add(parent, node.bibcode, "discovery", mode);
+        } else {
+          // Backward-compatible fallback for graphs cached before progressive
+          // expansion metadata existed.
+          add(seedBibcode, node.bibcode, "discovery", mode);
+        }
       }
       for (const ref of node.references || []) if (ids.has(ref)) add(node.bibcode, ref, "citation", null);
     }
@@ -1236,6 +1491,12 @@ var AstroZoteroMap = {
       }));
       actions.appendChild(this.makeButton(doc, state.batchSelection.has(node.bibcode) ? "Unselect batch" : "Select for batch", () => {
         this.toggleBatchNode(state, node);
+      }));
+    }
+    if (!node.seed) {
+      const expandedBefore = [...(state.expansionProgress?.keys?.() || [])].some(key => key.startsWith(node.bibcode + "|"));
+      actions.appendChild(this.makeButton(doc, expandedBefore ? "Expand more" : "Expand", async () => {
+        await this.expandNode(state, node);
       }));
     }
     actions.appendChild(this.makeButton(doc, "Set as seed", async () => {
