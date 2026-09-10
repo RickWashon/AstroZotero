@@ -4,6 +4,16 @@ Astronomy-focused Zotero plugin powered primarily by the NASA Astrophysics Data 
 
 AstroZotero extends the original `zot-nasa-ads` idea into an astronomy literature workflow for Zotero 7-9, with ADS metadata enrichment, PDF retrieval, and an embedded literature map.
 
+## Astro Map in Zotero
+
+<p align="center">
+  <img src="docs/images/astrozotero%20usage.png" alt="AstroZotero Astro Map embedded in Zotero" width="1200">
+</p>
+
+<p align="center"><em>Explore citation and literature relationships directly inside Zotero, inspect paper metadata, and add selected papers to your library without leaving the main interface.</em></p>
+
+The embedded **Astro Map** uses the selected Zotero item as a seed and visualizes **Cited by**, **References**, **Similar**, **Reviews**, **Useful**, and **Trending** relationships. Node styling distinguishes papers already in Zotero from external papers, while the detail card provides ADS / DOI access and single- or batch-import actions.
+
 ## Version 0.3.1
 
 ### NASA ADS metadata
