@@ -1,6 +1,7 @@
 name: Align functional source with 0.3.2-test2
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
