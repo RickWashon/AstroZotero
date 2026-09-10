@@ -1,0 +1,42 @@
+name: Publish AstroZotero v0.3.2-test2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/release-v0.3.2-test2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate version
+        shell: bash
+        run: |
+          test "$(python3 -c 'import json; print(json.load(open("manifest.json"))["version"])')" = "0.3.2-test2"
+
+      - name: Build XPI
+        shell: bash
+        run: |
+          zip -r AstroZotero-0.3.2-test2.xpi \
+            manifest.json bootstrap.js zot-nasa-ads.js astro-map.js \
+            preferences.js preferences.xhtml prefs.js zoteroPane.css \
+            updates.json COPYING README.md icons locale
+          sha256sum AstroZotero-0.3.2-test2.xpi
+
+      - name: Create pre-release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v0.3.2-test2 \
+            AstroZotero-0.3.2-test2.xpi \
+            --target "${GITHUB_SHA}" \
+            --title "AstroZotero v0.3.2-test2" \
+            --prerelease \
+            --notes $'Test release for AstroZotero 0.3.2.\n\n- Adds Astro Map Load more support.\n- Uses expanding ADS result windows with deduplication for more reliable discovery loading.\n- Raises ADS query row support for expanded literature-map results.\n- Keeps the v0.3.1 ADS metadata, PDF retrieval, OpenAlex fallback, and Zotero import workflow.'
