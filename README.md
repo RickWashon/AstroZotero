@@ -2,7 +2,7 @@
 
 Astronomy-focused Zotero plugin powered primarily by the NASA Astrophysics Data System (ADS).
 
-AstroZotero extends the original `zot-nasa-ads` idea into an astronomy literature workflow for Zotero 7-9, with ADS metadata enrichment, PDF retrieval, and an embedded literature map.
+AstroZotero extends the original `zot-nasa-ads` idea into an astronomy literature workflow for Zotero 7-10, with ADS metadata enrichment, PDF retrieval, and an embedded literature map.
 
 ## Astro Map in Zotero
 
@@ -14,7 +14,7 @@ AstroZotero extends the original `zot-nasa-ads` idea into an astronomy literatur
 
 The embedded **Astro Map** uses the selected Zotero item as a seed and visualizes **Cited by**, **References**, **Similar**, **Reviews**, **Useful**, and **Trending** relationships. Node styling distinguishes papers already in Zotero from external papers, while the detail card provides ADS / DOI access and single- or batch-import actions.
 
-## Version 0.3.1
+## Version 0.3.3
 
 ### NASA ADS metadata
 
@@ -73,11 +73,14 @@ NASA ADS is the primary source. OpenAlex can be used as a fallback for:
 
 ADS-specific `reviews()`, `useful()`, and `trending()` are not replaced with semantically different OpenAlex queries.
 
+For transient ADS network/rate-limit/server errors, AstroZotero retries the ADS request before falling back to OpenAlex. Fallback results are labeled as incomplete, are not cached as complete seed results, and can be retried from the map.
+
 ## Compatibility
 
 - Zotero 7
 - Zotero 8
-- Zotero 9.0.x (primary tested target: Zotero 9.0.6)
+- Zotero 9.0.x
+- Zotero 10.0.x
 
 ## Setup
 
