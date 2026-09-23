@@ -37,7 +37,9 @@ async function startup({ id, version, rootURI }) {
   for (const win of Zotero.getMainWindows()) {
     try { win.MozXULElement?.insertFTLIfNeeded?.("astrozotero-mainWindow.ftl"); } catch (_) {}
     ZotNasaAds.addToWindow(win);
-    await AstroZoteroMap.addToWindow(win, ZotNasaAds);
+    AstroZoteroMap.addToWindow(win, ZotNasaAds).catch(error =>
+      log("Astro Map window install failed: " + (error?.stack || error))
+    );
   }
   log("Started " + version);
 }
@@ -46,7 +48,9 @@ async function onMainWindowLoad({ window }) {
   if (!ZotNasaAds) return;
   try { window.MozXULElement?.insertFTLIfNeeded?.("astrozotero-mainWindow.ftl"); } catch (_) {}
   ZotNasaAds.addToWindow(window);
-  if (AstroZoteroMap) await AstroZoteroMap.addToWindow(window, ZotNasaAds);
+  if (AstroZoteroMap) AstroZoteroMap.addToWindow(window, ZotNasaAds).catch(error =>
+    log("Astro Map main-window install failed: " + (error?.stack || error))
+  );
 }
 
 function onMainWindowUnload({ window }) {

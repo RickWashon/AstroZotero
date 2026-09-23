@@ -75,6 +75,12 @@ ADS-specific `reviews()`, `useful()`, and `trending()` are not replaced with sem
 
 For transient ADS network/rate-limit/server errors, AstroZotero retries the ADS request before falling back to OpenAlex. Fallback results are labeled as incomplete, are not cached as complete seed results, and can be retried from the map.
 
+### Zotero 10 startup compatibility
+
+- Handles cold starts and restored non-default item-tree views in Zotero 10.
+- Installs Astro Map asynchronously so delayed item-tree initialization does not block plugin startup.
+- Places **Use selected item** before **Load** in the Astro Map controls.
+
 ## Compatibility
 
 - Zotero 7

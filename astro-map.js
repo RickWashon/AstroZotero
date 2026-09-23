@@ -58,18 +58,21 @@ var AstroZoteroMap = {
     let tries = 0;
     let mainNode = null;
     let toolbar = null;
-    // Zotero 9 builds the virtualized item tree and its toolbar asynchronously.
-    // Wait for both elements instead of using the obsolete
-    // #zotero-tb-advanced-search anchor used by older Style builds.
-    while (tries < 200) {
-      mainNode = doc.getElementById("item-tree-main-default");
+    // Zotero 9/10 builds the virtualized item tree and toolbar asynchronously.
+    // Zotero 10 can restore a non-default item-tree view whose id is not
+    // item-tree-main-default (for example item-tree-main-recentlyRead).
+    // Match any main item-tree view and allow a longer cold-start window.
+    while (tries < 600) {
+      mainNode = doc.getElementById("item-tree-main-default") ||
+        doc.querySelector('[id^="item-tree-main"]');
       toolbar = doc.getElementById("zotero-items-toolbar");
       if (mainNode && toolbar) break;
       await Zotero.Promise.delay(100);
       tries++;
     }
     if (!mainNode || !toolbar) {
-      this.log("Library item tree/toolbar not available after waiting; embedded map not installed.");
+      this.log("Library item tree/toolbar not available after cold-start wait; embedded map not installed. " +
+        "tree=" + (mainNode?.id || "none") + ", toolbar=" + Boolean(toolbar));
       this.installToolsFallback(win);
       return;
     }
@@ -242,11 +245,11 @@ var AstroZoteroMap = {
       state.controls[id] = input;
     }
 
+    const useSelection = this.makeButton(doc, "Use selected item", async () => this.loadFromCurrentSelection(state, true));
     const reload = this.makeButton(doc, "Load", async () => this.loadMap(state, true));
     const loadMore = this.makeButton(doc, "Load more", async () => this.loadMore(state));
     loadMore.disabled = true;
     state.loadMoreButton = loadMore;
-    const useSelection = this.makeButton(doc, "Use selected item", async () => this.loadFromCurrentSelection(state, true));
     const resetView = this.makeButton(doc, "Reset view", () => {
       state.zoom = 1; state.panX = 0; state.panY = 0; this.applyViewTransform(state);
     });
@@ -255,7 +258,7 @@ var AstroZoteroMap = {
     addSelected.disabled = true;
     state.batchSelectButton = selectNew;
     state.batchAddButton = addSelected;
-    header.append(reload, loadMore, useSelection, resetView, selectNew, addSelected);
+    header.append(useSelection, reload, loadMore, resetView, selectNew, addSelected);
 
     const seedLine = this.el(doc, "span", { style: "margin-left:auto;color:GrayText;max-width:34%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" }, "Select one paper, then click Load");
     header.appendChild(seedLine);
