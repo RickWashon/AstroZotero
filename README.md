@@ -2,7 +2,7 @@
 
 Astronomy-focused Zotero plugin powered primarily by the NASA Astrophysics Data System (ADS).
 
-AstroZotero extends the original `zot-nasa-ads` idea into an astronomy literature workflow for Zotero 7-10, with ADS metadata enrichment, PDF retrieval, and an embedded literature map.
+AstroZotero extends the original `zot-nasa-ads` workflow for Zotero 7-10 with ADS metadata enrichment, PDF retrieval, and an embedded literature map for exploring citation and semantic relationships without leaving Zotero.
 
 ## Astro Map in Zotero
 
@@ -10,11 +10,9 @@ AstroZotero extends the original `zot-nasa-ads` idea into an astronomy literatur
   <img src="docs/images/astrozotero%20usage.png" alt="AstroZotero Astro Map embedded in Zotero" width="1200">
 </p>
 
-<p align="center"><em>Explore citation and literature relationships directly inside Zotero, inspect paper metadata, and add selected papers to your library without leaving the main interface.</em></p>
+<p align="center"><em>Explore citation and literature relationships directly inside Zotero, inspect paper metadata, search the temporary map, and add selected papers to your library.</em></p>
 
-The embedded **Astro Map** uses the selected Zotero item as a seed and visualizes **Cited by**, **References**, **Similar**, **Reviews**, **Useful**, and **Trending** relationships. Node styling distinguishes papers already in Zotero from external papers, while the detail card provides ADS / DOI access and single- or batch-import actions.
-
-## Version 0.3.3
+## Version 0.3.4
 
 ### NASA ADS metadata
 
@@ -33,7 +31,7 @@ The embedded **Astro Map** uses the selected Zotero item as a seed and visualize
 
 ### Astro Map
 
-The Astro Map is embedded directly below the Zotero item tree and is opened from the Zotero toolbar or Tools menu.
+The Astro Map is embedded directly below the Zotero item tree and can be opened from the Zotero toolbar or Tools menu. It always starts closed after Zotero launches, so an empty map is not restored from the previous session.
 
 Available relations:
 
@@ -46,26 +44,45 @@ Available relations:
 
 The default view is **Cited by + References** to reduce expensive ADS discovery queries.
 
-Visual semantics:
+#### Layout and visual semantics
 
-- Node color = relationship type.
-- Filled node = paper already exists in Zotero.
-- Hollow node = external paper.
-- Multi-relation papers can show secondary relation markers.
+- Distance from the seed primarily represents combined seed affinity, using relation type, local title+abstract similarity, and optional OpenAlex semantic signals.
+- Non-seed papers form deterministic local communities, so strongly connected or influential papers can anchor their own literature clusters instead of every paper being arranged only around the seed.
+- Community sectors and soft radial constraints preserve a readable seed-distance meaning while allowing local citation/discovery neighborhoods to group naturally.
+- Node size follows citation count on a logarithmic scale with an expanded dynamic range, making highly cited papers more visually distinct.
+- Filled center = paper already exists in Zotero; hollow center = external paper.
+- Multi-relation papers use a segmented outer ring, with one colored arc per relation type.
+- Layout diagnostics report seed-distance Spearman `rho`, map-level `N@10` neighborhood preservation, and edge-distance stress.
 
-Interaction:
+#### Zoom, labels, and performance-oriented display
 
-- Zoom around the mouse pointer and pan the map.
-- Dynamic author-year labels expand with zoom and are balanced across active relation types instead of being limited to a fixed global top-N.
+- Zoom-dependent LOD shows fewer papers and edges when zoomed out and progressively reveals more when zooming in.
+- Node circles and author-year labels stay approximately constant in screen size while the map expands.
+- Geometric spacing uses compressed zoom (`zoom^0.60`) instead of linear stretching, reducing large empty gaps at high zoom.
+- The underlying layout remains stable during zoom and search rather than being recomputed on every interaction.
+
+#### Map search
+
+Search works on the papers already loaded into the temporary Astro Map and does not make a new ADS request.
+
+- Free text searches title, authors, and year.
+- Field search supports `title:`, `author:`, and `year:`.
+- Author matching is tolerant of common `First Last` / `Last, First` ordering differences.
+- Prefix a query with `^`, or toggle **1st/corr**, to restrict author matching to first author and, when OpenAlex authorship metadata provides it, corresponding author.
+- Enter / Shift+Enter cycles through matches, and matched papers remain visible through LOD filtering.
+
+#### Interaction
+
 - Use the currently selected Zotero item as the map seed.
 - Open ADS / DOI records.
 - Show local papers in Zotero, including papers outside the current collection.
 - Add external papers to Zotero.
 - Batch-select and batch-import external papers into the collection captured when the map seed is selected.
+- Load more seed results without losing the existing graph.
 
-### Fallback data source
+### ADS reliability and OpenAlex fallback
 
-NASA ADS is the primary source. OpenAlex can be used as a fallback for:
+NASA ADS remains the primary source. OpenAlex can be used as a fallback for:
 
 - Cited by
 - References
@@ -73,10 +90,11 @@ NASA ADS is the primary source. OpenAlex can be used as a fallback for:
 
 ADS-specific `reviews()`, `useful()`, and `trending()` are not replaced with semantically different OpenAlex queries.
 
-For transient ADS network/rate-limit/server errors, AstroZotero retries the ADS request before falling back to OpenAlex. Fallback results are labeled as incomplete, are not cached as complete seed results, and can be retried from the map.
+For transient ADS network, rate-limit, or server errors, AstroZotero retries ADS before falling back. OpenAlex fallback graphs are explicitly marked incomplete, are not cached as complete seed results, and expose **Retry ADS** rather than incorrectly reporting that no more seed results exist.
 
-### Zotero 10 startup compatibility
+### Zotero 10 compatibility
 
+- Supports Zotero 7 through Zotero 10.
 - Handles cold starts and restored non-default item-tree views in Zotero 10.
 - Installs Astro Map asynchronously so delayed item-tree initialization does not block plugin startup.
 - Places **Use selected item** before **Load** in the Astro Map controls.
@@ -92,7 +110,7 @@ For transient ADS network/rate-limit/server errors, AstroZotero retries the ADS 
 
 1. Install the `.xpi` from the GitHub Releases page.
 2. Restart Zotero if requested.
-3. Open Zotero Settings -> NASA ADS.
+3. Open Zotero Settings -> AstroZotero.
 4. Paste a NASA ADS API token and test it.
 5. Optional: configure OpenAlex fallback and PDF preferences.
 
@@ -103,3 +121,4 @@ AstroZotero is based on the original [`samuelyeewl/zot-nasa-ads`](https://github
 ## License
 
 GNU Affero General Public License v3.0. See `COPYING`.
+
