@@ -1655,7 +1655,7 @@ jobs:
           python3 -m json.tool updates.json >/dev/null
           test "$(python3 -c 'import json; print(json.load(open("manifest.json"))["version"])')" = "0.3.4"
           test "$(python3 -c 'import json; print(json.load(open("manifest.json"))["applications"]["zotero"]["strict_max_version"])')" = "10.0.*"
-          grep -q 'Math.pow(state.zoom, 0.60)' astro-map.js
+          grep -q 'Math.pow(z, 0.60)' astro-map.js
           grep -q '1st/corr' astro-map.js
           grep -q 'segmented' README.md
           grep -q 'always starts closed' README.md
