@@ -189,7 +189,7 @@ jobs:
                const message = String(error?.message || error || "");
                if (/401|403|rejected the API token/i.test(message)) return false;
           PATCH
-          git apply /tmp/z10-retry.patch
+          patch -p1 < /tmp/z10-retry.patch
 
           python3 - <<'PY'
           import json
