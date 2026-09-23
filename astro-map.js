@@ -376,12 +376,13 @@ var AstroZoteroMap = {
       let adsSeedError = null;
       try {
         if (state.seedRecord?.bibcode && !String(state.seedRecord.bibcode).startsWith("OA:")) {
-          const result = await this.plugin.adsSearchMany(apiKey,
+          const result = await this.adsWithRetry(state, "seed lookup", () => this.plugin.adsSearchMany(apiKey,
             'bibcode:"' + this.plugin.escapeQueryValue(state.seedRecord.bibcode) + '"',
-            this.adsFields(), 1);
+            this.adsFields(), 1));
           seed = result.docs[0] || state.seedRecord;
         } else if (state.seedItem) {
-          seed = await this.plugin.findAdsRecord(state.seedItem, apiKey, this.adsFields());
+          seed = await this.adsWithRetry(state, "seed lookup", () =>
+            this.plugin.findAdsRecord(state.seedItem, apiKey, this.adsFields()));
         }
       } catch (error) {
         adsSeedError = error;
@@ -441,7 +442,8 @@ var AstroZoteroMap = {
           try {
             const query = this.operator(mode) + '(bibcode:"' + this.plugin.escapeQueryValue(seed.bibcode) + '")';
             const sort = mode === "cited" ? "date desc" : (mode === "references" ? "citation_count desc" : null);
-            const result = await this.plugin.adsSearchMany(apiKey, query, this.adsFields(), perMode, sort, 0);
+            const result = await this.adsWithRetry(state, this.modeLabel(mode), () =>
+              this.plugin.adsSearchMany(apiKey, query, this.adsFields(), perMode, sort, 0));
             papers = result.docs.map(raw => this.normalizeRecord(raw));
             state.seedProgress.set(mode, {
               nextStart: result.docs.length,
@@ -452,18 +454,23 @@ var AstroZoteroMap = {
             });
           } catch (error) {
             if (!this.pref("openAlexFallback", true) || !this.shouldFallbackFromADS(error)) throw error;
-            this.log("ADS " + mode + " failed, trying OpenAlex: " + (error?.message || error));
+            const adsErrorText = this.adsErrorSummary(error);
+            this.log("ADS " + mode + " failed after retries, trying OpenAlex: " + adsErrorText);
             if (!openAlexSeed) {
               try { openAlexSeed = await this.resolveOpenAlexSeed(state, seed); }
               catch (oaError) { this.log("OpenAlex seed fallback failed: " + (oaError?.message || oaError)); }
             }
             if (openAlexSeed && this.openAlexSupportsMode(mode)) {
-              this.setStatus(state, "OpenAlex fallback: " + this.modeLabel(mode) + "…", false);
+              this.setStatus(state, this.modeLabel(mode) + ": ADS failed (" + adsErrorText + ") → OpenAlex fallback…", false);
               papers = await this.openAlexModeResults(openAlexSeed, mode, perMode);
-              state.seedProgress.set(mode, { nextStart: papers.length, requestedRows: papers.length, lastCount: papers.length, total: papers.length, source: "openalex" });
+              state.seedProgress.set(mode, {
+                nextStart: papers.length, requestedRows: papers.length, lastCount: papers.length,
+                total: papers.length, source: "openalex", incomplete: true, adsError: adsErrorText
+              });
               usedOpenAlex = true;
+              fallbackNotes.push(this.modeLabel(mode) + ": ADS failed (" + adsErrorText + ") → OpenAlex fallback (" + papers.length + " papers; incomplete)");
             } else {
-              fallbackNotes.push(this.modeLabel(mode) + " unavailable without ADS");
+              fallbackNotes.push(this.modeLabel(mode) + ": ADS failed (" + adsErrorText + "); unavailable without ADS");
               continue;
             }
           }
@@ -484,7 +491,7 @@ var AstroZoteroMap = {
           if (this.recordIdentityKey(paper) === this.recordIdentityKey(seed)) continue;
           this.mergePaper(merged, paper, mode, seed.bibcode);
         }
-        if (usedOpenAlex) fallbackNotes.push(this.modeLabel(mode) + " via OpenAlex");
+        // Detailed fallback notes are added in the ADS error branch above.
       }
 
       if (generation !== state.loadGeneration) return;
@@ -497,7 +504,9 @@ var AstroZoteroMap = {
         seedProgress: Object.fromEntries(state.seedProgress),
         expansionProgress: Object.fromEntries(state.expansionProgress)
       };
-      state.cache.set(cacheKey, graph);
+      graph.incompleteFallback = [...state.seedProgress.values()].some(p => p?.source === "openalex" && p?.incomplete);
+      if (!graph.incompleteFallback) state.cache.set(cacheKey, graph);
+      else state.cache.delete(cacheKey);
       state.graphData = graph;
       state.batchSelection.clear();
       if (state.batchSelectButton) state.batchSelectButton.textContent = "Select all new";
@@ -531,6 +540,15 @@ var AstroZoteroMap = {
       button.textContent = "Limit 500";
       return;
     }
+    const hasIncompleteFallback = [...(state.selectedModes || [])].some(mode => {
+      const p = state.seedProgress?.get?.(mode);
+      return p?.source === "openalex" && p?.incomplete;
+    });
+    if (hasIncompleteFallback) {
+      button.disabled = false;
+      button.textContent = "Retry ADS";
+      return;
+    }
     let hasMore = false;
     for (const mode of state.selectedModes || []) {
       const p = state.seedProgress?.get?.(mode);
@@ -559,6 +577,15 @@ var AstroZoteroMap = {
     if (state.graphData.nodes.length >= this.graphLimit()) {
       this.setStatus(state, "Graph limit reached (500 papers).", false);
       this.updateLoadMoreControl(state);
+      return;
+    }
+    const hasIncompleteFallback = [...(state.selectedModes || [])].some(mode => {
+      const p = state.seedProgress?.get?.(mode);
+      return p?.source === "openalex" && p?.incomplete;
+    });
+    if (hasIncompleteFallback) {
+      this.setStatus(state, "Retrying NASA ADS for the incomplete OpenAlex fallback…", false);
+      await this.loadMap(state, true);
       return;
     }
     if (String(state.seedRecord.bibcode).startsWith("OA:")) {
@@ -596,7 +623,8 @@ var AstroZoteroMap = {
         this.setStatus(state, "NASA ADS: widening " + this.modeLabel(mode) + " to top " + targetRows + "…", false);
         const query = this.operator(mode) + '(bibcode:"' + this.plugin.escapeQueryValue(state.seedRecord.bibcode) + '")';
         const sort = mode === "cited" ? "date desc" : (mode === "references" ? "citation_count desc" : null);
-        const result = await this.plugin.adsSearchMany(apiKey, query, this.adsFields(), targetRows, sort, 0);
+        const result = await this.adsWithRetry(state, this.modeLabel(mode), () =>
+          this.plugin.adsSearchMany(apiKey, query, this.adsFields(), targetRows, sort, 0));
         const papers = result.docs.map(raw => this.normalizeRecord(raw));
         state.seedProgress.set(mode, {
           nextStart: result.docs.length,
@@ -684,7 +712,8 @@ var AstroZoteroMap = {
         } else {
           const query = this.operator(mode) + '(bibcode:"' + this.plugin.escapeQueryValue(node.bibcode) + '")';
           const sort = mode === "cited" ? "date desc" : (mode === "references" ? "citation_count desc" : null);
-          const result = await this.plugin.adsSearchMany(apiKey, query, this.adsFields(), rows, sort, start);
+          const result = await this.adsWithRetry(state, "expand " + this.modeLabel(mode), () =>
+            this.plugin.adsSearchMany(apiKey, query, this.adsFields(), rows, sort, start));
           papers = result.docs.map(raw => this.normalizeRecord(raw));
           state.expansionProgress.set(progressKey, {
             nextStart: start + result.docs.length,
@@ -723,6 +752,37 @@ var AstroZoteroMap = {
       this.log(error?.stack || String(error));
       this.setStatus(state, error?.message || String(error), true);
     }
+  },
+
+  adsErrorSummary(error) {
+    const message = String(error?.message || error || "Unknown ADS error").replace(/\s+/g, " ").trim();
+    if (/429/.test(message)) return "HTTP 429 rate limit";
+    const http = message.match(/HTTP\s*(5\d\d)/i);
+    if (http) return "HTTP " + http[1];
+    if (/timed?\s*out|timeout/i.test(message)) return "timeout";
+    if (/NS_ERROR/i.test(message)) return message.slice(0, 120);
+    if (/network|connection/i.test(message)) return message.slice(0, 120);
+    return message.slice(0, 120);
+  },
+
+  async adsWithRetry(state, label, operation) {
+    let lastError = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        return await operation();
+      } catch (error) {
+        lastError = error;
+        const retryable = this.shouldFallbackFromADS(error);
+        if (!retryable || attempt >= 3) throw error;
+        const summary = this.adsErrorSummary(error);
+        this.log("ADS " + label + " attempt " + attempt + "/3 failed: " + summary);
+        if (state) {
+          this.setStatus(state, "NASA ADS " + label + " failed (" + summary + "); retrying " + attempt + "/2…", false);
+        }
+        await Zotero.Promise.delay(attempt === 1 ? 900 : 1800);
+      }
+    }
+    throw lastError || new Error("NASA ADS request failed.");
   },
 
   shouldFallbackFromADS(error) {
